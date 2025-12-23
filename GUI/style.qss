@@ -1,0 +1,107 @@
+/* ================= GLOBAL ================= */
+QWidget {
+    background-color: #0f0f14;
+    color: #e6e6eb;
+    font-family: "Segoe UI";
+    font-size: 11pt;
+}
+
+/* ================= HEADER ================= */
+#Header {
+    background-color: #0f0f0f;
+    border-bottom: 1px solid #222;
+}
+
+#HeaderTitle {
+    font-size: 26px;
+    font-weight: bold;
+    color: #ff7a18;
+}
+
+#HeaderSubtitle {
+    font-size: 14px;
+    color: #aaa;
+}
+
+/* ================= SIDEBAR ================= */
+#Sidebar {
+    background-color: #141414;
+    border-right: 1px solid #222;
+}
+
+QPushButton#SidebarButton {
+    background: transparent;
+    color: #ccc;
+    padding: 10px 16px;
+    border-radius: 10px;
+    text-align: left;
+}
+
+QPushButton#SidebarButton:hover {
+    background-color: rgba(255, 0, 0, 80);
+}
+
+QPushButton#SidebarButton[active="true"] {
+    background-color: rgba(255, 0, 0, 160);
+    border-left: 3px solid #ff2a2a;
+    font-weight: bold;
+    color: white;
+}
+
+/* ================= LOG BADGE ================= */
+#LogBadge {
+    background-color: #ff2a2a;
+    color: white;
+    font-size: 11px;
+    font-weight: bold;
+    padding: 2px 6px;
+    border-radius: 8px;
+    min-width: 18px;
+    text-align: center;
+}
+
+/* ================= LOGS ================= */
+QScrollArea {
+    background: transparent;
+    border: none;
+}
+
+QScrollArea QWidget {
+    background: transparent;
+}
+
+QScrollArea > QWidget > QWidget {
+    background-color: #0f0f14;
+}
+
+#LogsContainer {
+    background-color: #0f0f14;
+}
+
+/* Log Entries */
+QFrame#LogEntry_info {
+    background: #1e1e1e;
+    border-left: 4px solid #4caf50;
+    border-radius: 6px;
+}
+
+QFrame#LogEntry_warn {
+    background: #1e1e1e;
+    border-left: 4px solid #ff9800;
+    border-radius: 6px;
+}
+
+QFrame#LogEntry_error {
+    background: #1e1e1e;
+    border-left: 4px solid #f44336;
+    border-radius: 6px;
+}
+
+QLabel#LogHeader {
+    color: #aaa;
+    font-size: 11px;
+}
+
+QLabel#LogMessage {
+    color: #eee;
+}

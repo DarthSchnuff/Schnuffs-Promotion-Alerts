@@ -1,0 +1,14 @@
+backend/
+│
+├─ app/
+│  ├─ main.py              ← Einstieg
+│  ├─ settings.py          ← ENV / Secrets
+│  ├─ database.py          ← DB
+│  ├─ models.py            ← Tabellen
+│  ├─ twitch.py            ← Twitch API
+│  ├─ discord.py           ← Webhook
+│  ├─ worker.py            ← Scheduler / Logic
+│  └─ api/
+│     └─ streamers.py      ← REST API
+│
+└─ requirements.txt
