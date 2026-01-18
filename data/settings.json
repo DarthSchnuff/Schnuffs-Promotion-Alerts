@@ -1,0 +1,27 @@
+{
+    "twitch": {
+        "client_id": "",
+        "client_secret": ""
+    },
+    "streamers": [
+        "shroud",
+        "ninja"
+    ],
+    "discord": {
+        "freegames_webhook": "",
+        "twitch_webhook": ""
+    },
+    "freegames": {
+        "enabled": true,
+        "check_interval_hours": 6,
+        "enabled_stores": [
+            "epic-games-store",
+            "steam",
+            "gog",
+            "ubisoft",
+            "origin",
+            "pc"
+        ]
+    },
+    "autostart": false
+}

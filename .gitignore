@@ -1,0 +1,26 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Builds
+build/
+dist/
+*.exe
+*.spec.lock
+
+# Logs
+logs/
+*.log
+
+# Cache
+*.cache
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Optional private assets
+# assets/*.png
+# assets/*.ico
