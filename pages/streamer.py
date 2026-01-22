@@ -1,5 +1,6 @@
 import json
 import os
+from pathlib import Path
 
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel,
@@ -7,8 +8,20 @@ from PySide6.QtWidgets import (
 )
 from PySide6.QtCore import Signal
 
+from core.paths import data  # ✅ Fallback-Default aus Bundle
 
-STREAMER_FILE = "streamers.json"
+APP_NAME = "SchnuffsPromotionAlerts"
+
+
+def user_config_dir() -> Path:
+    appdata = os.getenv("APPDATA")
+    if appdata:
+        return Path(appdata) / APP_NAME
+    return Path.home() / ".config" / APP_NAME
+
+
+def user_streamers_path() -> Path:
+    return user_config_dir() / "streamers.json"
 
 
 class StreamerPage(QWidget):
@@ -16,7 +29,7 @@ class StreamerPage(QWidget):
 
     def __init__(self, controller):
         super().__init__()
-        
+
         self.controller = controller
         self.streamers: list[str] = []
 
@@ -54,17 +67,25 @@ class StreamerPage(QWidget):
 
         self.load_streamers()
 
-    def load_streamers(self):
-        if os.path.exists(STREAMER_FILE):
-            try:
-                with open(STREAMER_FILE, "r", encoding="utf-8") as f:
-                    data = json.load(f)
-            except Exception:
-                data = {}
-        else:
-            data = {}
+    def _read_streamers_file(self, path: Path) -> dict:
+        try:
+            if path.exists():
+                with open(path, "r", encoding="utf-8") as f:
+                    return json.load(f) or {}
+        except Exception:
+            pass
+        return {}
 
-        self.streamers = data.get("streamers", [])
+    def load_streamers(self):
+        # 1) User-Config (writable, stabil)
+        user_path = user_streamers_path()
+        data_obj = self._read_streamers_file(user_path)
+
+        # 2) Fallback: Default aus /data (Bundle)
+        if not data_obj:
+            data_obj = self._read_streamers_file(data("streamers.json"))
+
+        self.streamers = data_obj.get("streamers", [])
         self.list.clear()
 
         for name in self.streamers:
@@ -73,8 +94,13 @@ class StreamerPage(QWidget):
         self.streamers_changed.emit(self.streamers)
 
     def save_streamers(self):
-        with open(STREAMER_FILE, "w", encoding="utf-8") as f:
-            json.dump({"streamers": self.streamers}, f, indent=2)
+        path = user_streamers_path()
+        try:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            with open(path, "w", encoding="utf-8") as f:
+                json.dump({"streamers": self.streamers}, f, indent=2, ensure_ascii=False)
+        except Exception:
+            pass
 
     def get_streamers(self) -> list[str]:
         return list(self.streamers)
@@ -96,7 +122,9 @@ class StreamerPage(QWidget):
             return
 
         name = item.text()
-        self.streamers.remove(name)
+        if name in self.streamers:
+            self.streamers.remove(name)
+
         self.list.takeItem(self.list.row(item))
         self.save_streamers()
         self.streamers_changed.emit(self.streamers)

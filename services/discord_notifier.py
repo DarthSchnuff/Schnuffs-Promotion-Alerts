@@ -1,5 +1,8 @@
 import requests
 import datetime
+import logging
+
+logger = logging.getLogger("DiscordNotifier")
 
 
 class DiscordNotifier:
@@ -11,6 +14,13 @@ class DiscordNotifier:
     def __init__(self, webhook_url: str, name: str = "Discord"):
         self.webhook_url = (webhook_url or "").strip()
         self.name = name
+        self._session = requests.Session()
+
+    def close(self):
+        try:
+            self._session.close()
+        except Exception:
+            pass
 
     # ================= CORE =================
     def send(self, title: str, description: str, color: int = 0x5865F2):
@@ -18,25 +28,19 @@ class DiscordNotifier:
             return
 
         payload = {
-            "embeds": [
-                {
-                    "title": title,
-                    "description": description,
-                    "color": color,
-                    "timestamp": datetime.datetime.utcnow().isoformat()
-                }
-            ]
+            "embeds": [{
+                "title": title,
+                "description": description,
+                "color": color,
+                "timestamp": datetime.datetime.utcnow().isoformat()
+            }]
         }
 
         try:
-            r = requests.post(
-                self.webhook_url,
-                json=payload,
-                timeout=10
-            )
+            r = self._session.post(self.webhook_url, json=payload, timeout=10)
             r.raise_for_status()
         except Exception as e:
-            print(f"[{self.name}] Discord Fehler: {e}")
+            logger.warning(f"[{self.name}] Discord Fehler: {e}")
 
     # ================= TWITCH =================
     def streamer_live(self, name: str, title: str, game: str, url: str, thumbnail: str):
@@ -44,22 +48,21 @@ class DiscordNotifier:
             return
 
         payload = {
-            "embeds": [
-                {
-                    "title": f"🔴 {name} ist LIVE!",
-                    "url": url,
-                    "description": f"**{title}**\n🎮 {game}",
-                    "color": 0xED4245,
-                    "image": {"url": thumbnail},
-                    "timestamp": datetime.datetime.utcnow().isoformat()
-                }
-            ]
+            "embeds": [{
+                "title": f"🔴 {name} ist LIVE!",
+                "url": url,
+                "description": f"**{title}**\n🎮 {game}",
+                "color": 0xED4245,
+                "image": {"url": thumbnail},
+                "timestamp": datetime.datetime.utcnow().isoformat()
+            }]
         }
 
         try:
-            requests.post(self.webhook_url, json=payload, timeout=10)
+            r = self._session.post(self.webhook_url, json=payload, timeout=10)
+            r.raise_for_status()
         except Exception as e:
-            print(f"[{self.name}] Twitch Live Fehler: {e}")
+            logger.warning(f"[{self.name}] Twitch Live Fehler: {e}")
 
     def streamer_offline(self, name: str):
         self.send(
@@ -70,15 +73,7 @@ class DiscordNotifier:
 
     # ================= INFO / ERROR =================
     def info(self, message: str):
-        self.send(
-            title="ℹ️ Info",
-            description=message,
-            color=0x57F287
-        )
+        self.send(title="ℹ️ Info", description=message, color=0x57F287)
 
     def error(self, message: str):
-        self.send(
-            title="⚠️ Fehler",
-            description=message,
-            color=0xFEE75C
-        )
+        self.send(title="⚠️ Fehler", description=message, color=0xFEE75C)

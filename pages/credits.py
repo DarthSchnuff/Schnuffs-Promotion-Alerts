@@ -59,6 +59,14 @@ class CreditsPage(QWidget):
         vieler Open-Source-Entwickler:innen und Tester.
         </p>
 
+        <h3>Besitzer · Programmierer · Ersteller</h3>
+        <ul>
+            <li>
+                <b><a href="https://www.twitch.tv/darthschnuff">DarthSchnuff</a></b><br>
+                Twitch Channel
+            </li>
+        </ul>
+
         <h3>Frameworks & Libraries</h3>
         <ul>
             <li>

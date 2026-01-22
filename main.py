@@ -1,10 +1,10 @@
 import sys
-from pathlib import Path
 
 from PySide6.QtWidgets import QApplication
 
 from main_window import MainWindow
 from core.app_controller import AppController
+from core.paths import root
 
 
 def main():
@@ -12,7 +12,7 @@ def main():
     app.setQuitOnLastWindowClosed(False)
 
     # ================= STYLE =================
-    style_path = Path(__file__).parent / "style.qss"
+    style_path = root("style.qss")
     if style_path.exists():
         app.setStyleSheet(style_path.read_text(encoding="utf-8"))
 
@@ -24,7 +24,6 @@ def main():
     window.show()
 
     # ================= CONTROLLER → UI =================
-    # Freegames läuft jetzt eigenständig → kein connect mehr nötig
     controller.status_message.connect(
         window.page_dashboard.update_status
     )

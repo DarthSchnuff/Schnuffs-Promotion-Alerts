@@ -1,7 +1,7 @@
 from PySide6.QtCore import QObject, Signal
 from core.config import load_settings
 from services.discord_notifier import DiscordNotifier
-from services.twitch_watcher import TwitchWatcher  # ← HINZUFÜGEN!
+from services.twitch_watcher import TwitchWatcher
 
 
 class AppController(QObject):
@@ -10,7 +10,6 @@ class AppController(QObject):
     Verbindet Settings, Services und Dashboard
     """
 
-    # ================= SIGNALS =================
     status_message = Signal(str)
     streamer_updated = Signal(object)
 
@@ -18,27 +17,40 @@ class AppController(QObject):
         super().__init__()
         self.settings = load_settings()
 
-        # ================= DISCORD =================
         discord_cfg = self.settings.get("discord", {})
         self.discord_twitch = DiscordNotifier(
-            discord_cfg.get("twitch_webhook", "")
+            discord_cfg.get("twitch_webhook", ""),
+            name="Twitch"
         )
         self.discord_freegames = DiscordNotifier(
-            discord_cfg.get("freegames_webhook", "")
+            discord_cfg.get("freegames_webhook", ""),
+            name="Freegames"
         )
 
-        # ================= TWITCH =================
         twitch_cfg = self.settings.get("twitch", {})
         self.twitch_client_id = twitch_cfg.get("client_id", "")
         self.twitch_client_secret = twitch_cfg.get("client_secret", "")
         self.twitch_watcher: TwitchWatcher | None = None
+
+    def reload_settings(self):
+        """✅ Settings neu laden und laufende Services/Notifiers aktualisieren."""
+        self.settings = load_settings()
+
+        discord_cfg = self.settings.get("discord", {})
+        self.discord_twitch.webhook_url = (discord_cfg.get("twitch_webhook", "") or "").strip()
+        self.discord_freegames.webhook_url = (discord_cfg.get("freegames_webhook", "") or "").strip()
+
+        twitch_cfg = self.settings.get("twitch", {})
+        self.twitch_client_id = (twitch_cfg.get("client_id", "") or "").strip()
+        self.twitch_client_secret = (twitch_cfg.get("client_secret", "") or "").strip()
+
+        self.status_message.emit("✅ Settings aktualisiert")
 
     # ======================================================================
     # STARTUP
     # ======================================================================
 
     def start(self):
-        """Startet alle aktivierten Services"""
         self.status_message.emit("Initialisiere Services...")
         self._start_twitch()
         self.status_message.emit("Alle aktiven Services gestartet ✅")
@@ -67,41 +79,41 @@ class AppController(QObject):
         self.status_message.emit("🟢 Twitch Service aktiv")
 
     def get_streamers(self) -> list[str]:
-        """Gibt Liste der zu überwachenden Streamer zurück"""
         return self.settings.get("streamers", [])
 
     def _on_streamer_update(self, name: str, is_live: bool, info: dict | None):
-        """TwitchWatcher Callback"""
-
-        # Nur weiter, wenn Stream wirklich live ist
-        if not is_live or not info:
-            return
-
-        # Dashboard Update
+        # Dashboard immer updaten
         streamer_data = {
             "name": name,
-            "is_online": True,
-            "title": info.get("title", "")
+            "is_online": bool(is_live),
+            "title": (info.get("title", "") if (is_live and info) else ""),
+            "game_name": (info.get("game_name", "") if (is_live and info) else ""),
+            "viewer_count": (info.get("viewer_count", 0) if (is_live and info) else 0),
+            "started_at": (info.get("started_at", "") if (is_live and info) else ""),
         }
         self.streamer_updated.emit(streamer_data)
 
-        # Discord Notification
-        self.discord_twitch.send(
-            title=f"{name} ist jetzt LIVE!",
-            description=info.get("title", "")
-        )
+        # Discord nur wenn LIVE
+        if is_live and info:
+            self.discord_twitch.send(
+                title=f"{name} ist jetzt LIVE!",
+                description=info.get("title", "")
+            )
 
     # ======================================================================
     # SHUTDOWN
     # ======================================================================
 
     def shutdown(self):
-        """Stoppt alle Services beim Beenden der App"""
         self.status_message.emit("Stoppe Services...")
 
         if self.twitch_watcher:
-            self.twitch_watcher.stop()
-            self.twitch_watcher.join()  # <- sorgt dafür, dass Thread wirklich beendet wird
+            try:
+                self.twitch_watcher.stop()
+                self.twitch_watcher.join(timeout=5)
+            except Exception:
+                pass
+            finally:
+                self.twitch_watcher = None
 
         self.status_message.emit("✅ Alle Services gestoppt")
-

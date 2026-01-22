@@ -11,14 +11,6 @@ logging.basicConfig(level=logging.INFO)
 class TwitchWatcher(threading.Thread):
     """
     Thread-basierter Twitch Streamer Status Watcher
-
-    Args:
-        client_id: Twitch Client-ID
-        client_secret: Twitch Client-Secret
-        get_streamers: Callable, liefert Liste von Streamern (str)
-        callback: Callable(name: str, is_live: bool, info: dict | None)
-        interval: Check-Intervall in Sekunden
-        fire_initial: beim Start direkt einmal prüfen
     """
 
     def __init__(
@@ -36,41 +28,54 @@ class TwitchWatcher(threading.Thread):
         self.client_secret = client_secret
         self.get_streamers = get_streamers
         self.callback = callback
-        self.interval = max(interval, 30)
+        self.interval = max(int(interval), 30)
         self.fire_initial = fire_initial
 
+        # Event = "running"; stop() -> clear()
         self._running = threading.Event()
         self._running.set()
 
         self.access_token: Optional[str] = None
         self.token_expiry: float = 0
 
-        # name -> bool
         self.live_state: dict[str, bool] = {}
+
+        # Optional: cache user_id to avoid repeated /users calls
+        self._user_id_cache: dict[str, str] = {}
+
+        # Session: sauber schließbar
+        self._session = requests.Session()
 
     # ================= THREAD =================
     def stop(self):
-        """Thread sauber stoppen"""
+        """Thread sauber stoppen (kein join hier!)."""
         self._running.clear()
-        self.join(timeout=5)  # Optional: Warten bis Thread wirklich endet
 
     def run(self):
         """Thread-Loop"""
-        self._fetch_token()
+        try:
+            self._fetch_token()
 
-        if self.fire_initial:
-            self.check_streamers(force_fire=True)
+            if self.fire_initial and self._running.is_set():
+                self.check_streamers(force_fire=True)
 
-        while self._running.is_set():
+            while self._running.is_set():
+                try:
+                    self.check_streamers()
+                except Exception as e:
+                    logger.error(f"Fehler bei Twitch-Check: {e}")
+
+                # ✅ WICHTIG: wirklich schlafen (Event.wait wäre hier falsch, da Event gesetzt ist)
+                for _ in range(self.interval):
+                    if not self._running.is_set():
+                        break
+                    time.sleep(1)
+
+        finally:
             try:
-                self.check_streamers()
-            except Exception as e:
-                logger.error(f"Fehler bei Twitch-Check: {e}")
-
-            for _ in range(self.interval):
-                if not self._running.is_set():
-                    return
-                time.sleep(1)
+                self._session.close()
+            except Exception:
+                pass
 
     # ================= LOGIC =================
     def _fetch_token(self):
@@ -86,14 +91,18 @@ class TwitchWatcher(threading.Thread):
         }
 
         try:
-            resp = requests.post(url, params=params, timeout=10)
+            resp = self._session.post(url, params=params, timeout=10)
             resp.raise_for_status()
             data = resp.json()
 
-            self.access_token = data["access_token"]
-            self.token_expiry = time.time() + data["expires_in"]
+            self.access_token = data.get("access_token")
+            expires_in = data.get("expires_in", 0) or 0
+            self.token_expiry = time.time() + float(expires_in)
 
-            logger.info("✅ Twitch Token erfolgreich abgerufen")
+            if self.access_token:
+                logger.info("✅ Twitch Token erfolgreich abgerufen")
+            else:
+                logger.error("❌ Twitch Token Antwort ohne access_token")
 
         except Exception as e:
             logger.error(f"❌ Twitch Token Fehler: {e}")
@@ -102,27 +111,32 @@ class TwitchWatcher(threading.Thread):
     def check_streamers(self, force_fire: bool = False):
         """Prüft alle Streamer auf Live-Status"""
         self._fetch_token()
-        if not self.access_token:
+        if not self.access_token or not self._running.is_set():
             return
 
         current = {
             name.strip().lower()
             for name in self.get_streamers()
-            if name.strip()
+            if name and name.strip()
         }
 
         removed = set(self.live_state.keys()) - current
         for name in removed:
             del self.live_state[name]
+            self._user_id_cache.pop(name, None)
 
         headers = {
-            "Client-ID": self.client_id,
+            # ✅ Twitch erwartet "Client-Id"
+            "Client-Id": self.client_id,
             "Authorization": f"Bearer {self.access_token}",
         }
 
         for name in current:
+            if not self._running.is_set():
+                return
+
             try:
-                info = self._is_streamer_live(name, headers)
+                info = self._get_stream_info(name, headers)
                 is_live = info is not None
                 last = self.live_state.get(name)
 
@@ -131,22 +145,61 @@ class TwitchWatcher(threading.Thread):
                     self.callback(name, is_live, info)
 
             except requests.HTTPError as e:
-                if e.response.status_code == 401:
+                if e.response is not None and e.response.status_code == 401:
                     logger.warning("🔁 Twitch Token abgelaufen, erneuere...")
                     self.access_token = None
                     self._fetch_token()
                 else:
-                    logger.error(f"[{name}] HTTP Fehler: {e}")
+                    status = e.response.status_code if e.response is not None else "?"
+                    body = ""
+                    try:
+                        body = e.response.text if e.response is not None else ""
+                    except Exception:
+                        pass
+                    logger.error(f"[{name}] HTTP Fehler {status}: {e} {body[:200]}")
 
             except Exception as e:
                 logger.error(f"[{name}] Fehler: {e}")
 
-    def _is_streamer_live(self, name: str, headers: dict) -> Optional[dict]:
-        """Prüft ob Streamer live ist"""
-        url = "https://api.twitch.tv/helix/streams"
-        params = {"user_login": name}
+    # ------------------ Twitch helpers ------------------
+    def _get_user_id(self, login: str, headers: dict) -> Optional[str]:
+        """Resolve login -> user_id (cached)."""
+        if login in self._user_id_cache:
+            return self._user_id_cache[login]
 
-        r = requests.get(url, headers=headers, params=params, timeout=10)
+        url = "https://api.twitch.tv/helix/users"
+        params = {"login": login}
+
+        r = self._session.get(url, headers=headers, params=params, timeout=10)
+        r.raise_for_status()
+
+        data = r.json().get("data", [])
+        if not data:
+            return None
+
+        user_id = data[0].get("id")
+        if user_id:
+            self._user_id_cache[login] = user_id
+        return user_id
+
+    def _get_stream_info(self, login: str, headers: dict) -> Optional[dict]:
+        """
+        Prüft ob Streamer live ist und liefert Live-Infos zurück.
+        Nutzt bevorzugt user_id (robuster) und fällt zur Not auf user_login zurück.
+        """
+        # 1) Prefer user_id
+        user_id = self._get_user_id(login, headers)
+        if user_id:
+            info = self._fetch_stream_by_params(headers, {"user_id": user_id})
+            if info:
+                return info
+
+        # 2) Fallback user_login
+        return self._fetch_stream_by_params(headers, {"user_login": login})
+
+    def _fetch_stream_by_params(self, headers: dict, params: dict) -> Optional[dict]:
+        url = "https://api.twitch.tv/helix/streams"
+        r = self._session.get(url, headers=headers, params=params, timeout=10)
         r.raise_for_status()
 
         data = r.json().get("data", [])
@@ -154,7 +207,10 @@ class TwitchWatcher(threading.Thread):
             return None
 
         stream = data[0]
+        # ✅ Mehr echte Live-Daten fürs Dashboard / Logging
         return {
-            "title": stream.get("title", "")
+            "title": stream.get("title", "") or "",
+            "game_name": stream.get("game_name", "") or "",
+            "viewer_count": stream.get("viewer_count", 0) or 0,
+            "started_at": stream.get("started_at", "") or "",
         }
-

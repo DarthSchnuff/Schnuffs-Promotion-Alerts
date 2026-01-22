@@ -5,9 +5,10 @@ from PySide6.QtWidgets import (
 import webbrowser
 
 from PySide6.QtGui import QIcon
-from PySide6.QtCore import QSize, Qt
+from PySide6.QtCore import QSize, Qt, Signal  # ✅ Signal dazu
 
 from core.config import load_settings, save_settings
+from core.paths import asset
 from version import APP_VERSION
 from update_checker import check_for_update
 from services.autostart import is_enabled, enable, disable
@@ -16,6 +17,9 @@ PAYPAL_DONATION_URL = "https://www.paypal.me/DarthSchnuff"
 
 
 class SettingsPage(QWidget):
+    # ✅ NEU: Signal, damit MainWindow/Controller reagieren kann
+    settings_saved = Signal()
+
     def __init__(self):
         super().__init__()
 
@@ -102,24 +106,15 @@ class SettingsPage(QWidget):
         discord_title.setStyleSheet("font-weight: bold")
 
         discord_form = QFormLayout()
-
         discord_cfg = self.settings.get("discord", {})
 
         self.discord_twitch_input = QLineEdit()
-        self.discord_twitch_input.setPlaceholderText(
-            "Webhook für Twitch Alerts"
-        )
-        self.discord_twitch_input.setText(
-            discord_cfg.get("twitch_webhook", "")
-        )
+        self.discord_twitch_input.setPlaceholderText("Webhook für Twitch Alerts")
+        self.discord_twitch_input.setText(discord_cfg.get("twitch_webhook", ""))
 
         self.discord_freegames_input = QLineEdit()
-        self.discord_freegames_input.setPlaceholderText(
-            "Webhook für Free Games Alerts"
-        )
-        self.discord_freegames_input.setText(
-            discord_cfg.get("freegames_webhook", "")
-        )
+        self.discord_freegames_input.setPlaceholderText("Webhook für Free Games Alerts")
+        self.discord_freegames_input.setText(discord_cfg.get("freegames_webhook", ""))
 
         discord_form.addRow("Twitch Webhook", self.discord_twitch_input)
         discord_form.addRow("Free Games Webhook", self.discord_freegames_input)
@@ -145,7 +140,7 @@ class SettingsPage(QWidget):
         donation_title.setStyleSheet("font-weight: bold")
 
         donation_btn = QPushButton()
-        donation_btn.setIcon(QIcon("assets/donate_heart_blue.png"))
+        donation_btn.setIcon(QIcon(str(asset("donate_heart_blue.png"))))
         donation_btn.setIconSize(QSize(64, 64))
         donation_btn.setFixedSize(80, 80)
         donation_btn.setToolTip("Über PayPal unterstützen")
@@ -161,9 +156,7 @@ class SettingsPage(QWidget):
             }
         """)
 
-        donation_btn.clicked.connect(
-            lambda: webbrowser.open(PAYPAL_DONATION_URL)
-        )
+        donation_btn.clicked.connect(lambda: webbrowser.open(PAYPAL_DONATION_URL))
 
         donation_layout.addWidget(donation_title)
         donation_layout.addWidget(donation_btn, alignment=Qt.AlignLeft)
@@ -176,14 +169,10 @@ class SettingsPage(QWidget):
         result = check_for_update(APP_VERSION)
 
         if result.get("update"):
-            self.update_status.setText(
-                f"Update verfügbar: {result['latest']}"
-            )
+            self.update_status.setText(f"Update verfügbar: {result['latest']}")
             self.update_btn.setText("Release öffnen")
             self.update_btn.clicked.disconnect()
-            self.update_btn.clicked.connect(
-                lambda: webbrowser.open(result["url"])
-            )
+            self.update_btn.clicked.connect(lambda: webbrowser.open(result["url"]))
         else:
             self.update_status.setText("Du hast die neueste Version ✅")
 
@@ -200,7 +189,6 @@ class SettingsPage(QWidget):
         else:
             enable()
             self.update_status.setText("Autostart aktiviert")
-
         self.update_autostart_btn()
 
     # ================= TWITCH =================
@@ -219,6 +207,9 @@ class SettingsPage(QWidget):
         save_settings(self.settings)
         self.update_status.setText("Twitch gespeichert ✅")
 
+        # ✅ NEU: informieren, dass Settings geändert wurden
+        self.settings_saved.emit()
+
     # ================= DISCORD =================
     def save_discord(self):
         twitch_webhook = self.discord_twitch_input.text().strip()
@@ -231,3 +222,5 @@ class SettingsPage(QWidget):
         save_settings(self.settings)
         self.update_status.setText("Discord Webhooks gespeichert ✅")
 
+        # ✅ NEU: informieren, dass Settings geändert wurden
+        self.settings_saved.emit()
